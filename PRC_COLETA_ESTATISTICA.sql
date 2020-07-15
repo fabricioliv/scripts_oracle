@@ -1,0 +1,53 @@
+CREATE OR REPLACE PROCEDURE SDBANCO.PRC_COLETA_ESTATISTICA AUTHID CURRENT_USER  IS
+  --
+  VOWNER     ALL_TABLES.OWNER%TYPE; /* OWNER            */
+  VTABLENAME ALL_TABLES.TABLE_NAME%TYPE; /* TABLE NAME       */
+  VCOLETA    VARCHAR2(4000);
+  LOCKSTATS EXCEPTION;
+  PRAGMA EXCEPTION_INIT(LOCKSTATS, -20005);
+  CODEMSG NUMBER;
+  VMSG    VARCHAR2(2000);
+  --
+  CURSOR CGETIDX IS
+  --
+    SELECT DISTINCT OWNER, TABLE_NAME
+      FROM ALL_TABLES
+     WHERE STATUS = 'VALID'
+       AND UPPER(OWNER) NOT IN ('SYS')
+       AND (IOT_TYPE IS NULL  OR   IOT_TYPE <> 'IOT_OVERFLOW'); 
+--       
+BEGIN
+  --
+  OPEN CGETIDX;
+  LOOP
+    FETCH CGETIDX
+      INTO VOWNER, VTABLENAME;
+    EXIT WHEN CGETIDX%NOTFOUND;
+    -- 
+    BEGIN
+    --    
+      VCOLETA := 'BEGIN DBMS_STATS.GATHER_TABLE_STATS(OWNNAME => ' ||
+                 CHR(39) || VOWNER || CHR(39) || ',' || ' TABNAME    => ' ||
+                 CHR(39) || VTABLENAME || CHR(39) || ',' ||
+                 ' METHOD_OPT =>' || CHR(39) ||
+                 'FOR ALL COLUMNS SIZE SKEWONLY' || CHR(39) || ',' ||
+                 ' CASCADE    => TRUE, ' || ' DEGREE => DBMS_STATS.AUTO_DEGREE);
+                    END;';
+      EXECUTE IMMEDIATE (VCOLETA);
+    EXCEPTION
+      WHEN LOCKSTATS THEN
+        DBMS_OUTPUT.PUT_LINE('ERRO!!! ESTATISTICAS NAO COLETADAS PARA - ' ||
+                             VOWNER || '.' || VTABLENAME ||
+                             ' - LOCK DE ESTATISTICAS.');
+      WHEN OTHERS THEN
+        CODEMSG := SQLCODE;
+        VMSG    := SQLERRM;
+        DBMS_OUTPUT.PUT_LINE('ERRO!!! ESTATISTICAS NAO COLETADAS PARA - ' ||
+                             VOWNER || '.' || VTABLENAME || ' .');
+        DBMS_OUTPUT.PUT_LINE('   COD ERRO:- ' || CODEMSG || ' -ERROR- ' || VMSG);
+    END;
+  --  
+  END LOOP;
+  CLOSE CGETIDX;
+END;
+/
